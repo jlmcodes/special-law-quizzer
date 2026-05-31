@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud, AlertTriangle, Shuffle, Filter } from 'lucide-react';
+import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud, AlertTriangle, Shuffle, StopCircle } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
@@ -40,7 +40,7 @@ export default function App() {
   
   // Session State (for randomized taking)
   const [sessionQuestions, setSessionQuestions] = useState([]);
-  const [setupModal, setSetupModal] = useState({ isOpen: false, topic: null, type: null }); // type: 'quiz' | 'flashcards'
+  const [setupModal, setSetupModal] = useState({ isOpen: false, topic: null, type: null }); 
   const [isRandomized, setIsRandomized] = useState(false);
 
   // Cloud Auth State
@@ -50,7 +50,9 @@ export default function App() {
   // Quiz State
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState({});
-  const [score, setScore] = useState(0);
+  
+  // Review State
+  const [showOnlyWrong, setShowOnlyWrong] = useState(false);
 
   // 1. Initialize Authentication
   useEffect(() => {
@@ -131,7 +133,7 @@ export default function App() {
     setActiveTopic(setupModal.topic);
     setCurrentQuestionIndex(0);
     setUserAnswers({});
-    setScore(0);
+    setShowOnlyWrong(false);
     setCurrentView(setupModal.type);
     setSetupModal({ isOpen: false, topic: null, type: null });
   };
@@ -148,14 +150,14 @@ export default function App() {
   };
 
   const submitQuiz = () => {
-    let currentScore = 0;
-    sessionQuestions.forEach((q, idx) => {
-      if (userAnswers[idx] === q.correctAnswerIndex) {
-        currentScore++;
-      }
-    });
-    setScore(currentScore);
     setCurrentView('review');
+  };
+
+  const handleAnswerSelect = (optIdx) => {
+    // Only allow selection if the question hasn't been answered yet (Instant Feedback locking)
+    if (userAnswers[currentQuestionIndex] === undefined) {
+      setUserAnswers({...userAnswers, [currentQuestionIndex]: optIdx});
+    }
   };
 
   // --- COMPONENTS ---
@@ -287,46 +289,39 @@ export default function App() {
   const Quizzer = () => {
     const question = sessionQuestions[currentQuestionIndex];
     const isLast = currentQuestionIndex === sessionQuestions.length - 1;
-    const hasAnswered = userAnswers[currentQuestionIndex] !== undefined;
-
-    // Calculate Live Tally
+    const userAnswer = userAnswers[currentQuestionIndex];
+    const hasAnswered = userAnswer !== undefined;
+    
+    // Live Tally logic
     let correctCount = 0;
     let wrongCount = 0;
-    Object.keys(userAnswers).forEach((key) => {
-      const idx = parseInt(key);
-      if (userAnswers[idx] === sessionQuestions[idx].correctAnswerIndex) {
-        correctCount++;
-      } else {
-        wrongCount++;
-      }
+    Object.keys(userAnswers).forEach(idx => {
+       if (userAnswers[idx] === sessionQuestions[idx].correctAnswerIndex) {
+         correctCount++;
+       } else {
+         wrongCount++;
+       }
     });
 
     return (
       <div className="max-w-3xl mx-auto p-6 animate-fade-in">
         <div className="flex justify-between items-center mb-6">
-          <div>
-             <h2 className="text-xl font-bold text-gray-900 dark:text-white">{activeTopic.title}</h2>
-             <span className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs font-bold px-3 py-1 rounded-full mt-2 inline-block uppercase tracking-wider">
-               Question {currentQuestionIndex + 1} of {sessionQuestions.length}
-             </span>
-          </div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">{activeTopic.title}</h2>
           
-          {/* Live Score Tally */}
-          <div className="flex gap-4 p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-             <div className="flex flex-col items-center">
-                <span className="text-xs text-gray-500 font-bold uppercase tracking-widest">Correct</span>
-                <span className="text-xl font-black text-green-500">{correctCount}</span>
+          {/* Live Tally & Progress */}
+          <div className="flex items-center gap-3">
+             <div className="flex gap-2 text-sm font-bold bg-white dark:bg-gray-800 px-3 py-1 rounded-full shadow-sm border border-gray-100 dark:border-gray-700">
+                <span className="text-green-600 dark:text-green-400">{correctCount} ✔</span>
+                <span className="text-gray-300 dark:text-gray-600">|</span>
+                <span className="text-red-500 dark:text-red-400">{wrongCount} ✖</span>
              </div>
-             <div className="w-px bg-gray-200 dark:bg-gray-700"></div>
-             <div className="flex flex-col items-center">
-                <span className="text-xs text-gray-500 font-bold uppercase tracking-widest">Wrong</span>
-                <span className="text-xl font-black text-red-500">{wrongCount}</span>
-             </div>
+             <span className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-sm font-semibold px-4 py-1 rounded-full shadow-sm">
+               {currentQuestionIndex + 1} of {sessionQuestions.length}
+             </span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-100 dark:border-gray-700 mb-6 relative overflow-hidden">
-          {/* Question Text */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-100 dark:border-gray-700 mb-6 relative">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider font-semibold">
             {question.type === 'theory' ? 'Theoretical Problem' : 'Situational/Computational'}
           </p>
@@ -334,71 +329,77 @@ export default function App() {
             {question.question}
           </p>
 
-          {/* Options */}
           <div className="grid gap-3">
             {question.options.map((opt, idx) => {
-              // Styling logic for instant feedback
-              let optionClass = "flex items-start p-4 rounded-lg border-2 transition-all ";
+              // Instant Feedback Logic
+              let borderClass = 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750';
+              let textClass = 'text-gray-800 dark:text-gray-200';
+              let icon = null;
+
               if (hasAnswered) {
                 if (idx === question.correctAnswerIndex) {
-                   optionClass += "border-green-500 bg-green-50 dark:bg-green-900/30 text-green-900 dark:text-green-100";
-                } else if (idx === userAnswers[currentQuestionIndex]) {
-                   optionClass += "border-red-500 bg-red-50 dark:bg-red-900/30 text-red-900 dark:text-red-100";
+                  borderClass = 'border-green-500 bg-green-50 dark:bg-green-900/30 ring-1 ring-green-500';
+                  textClass = 'text-green-900 dark:text-green-100 font-bold';
+                  icon = <CheckCircle className="text-green-500 shrink-0 ml-auto" size={20} />;
+                } else if (idx === userAnswer) {
+                  borderClass = 'border-red-500 bg-red-50 dark:bg-red-900/30';
+                  textClass = 'text-red-900 dark:text-red-100';
+                  icon = <XCircle className="text-red-500 shrink-0 ml-auto" size={20} />;
                 } else {
-                   optionClass += "border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed";
+                  borderClass = 'border-gray-200 dark:border-gray-700 opacity-50'; // Dim unselected wrong options
                 }
-              } else {
-                optionClass += "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer";
               }
 
               return (
-                <label key={idx} className={optionClass}>
-                  <input 
-                    type="radio" 
-                    name={`quiz-option-${currentQuestionIndex}`}
-                    disabled={hasAnswered}
-                    className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50"
-                    checked={userAnswers[currentQuestionIndex] === idx}
-                    onChange={() => {
-                      if (!hasAnswered) {
-                        setUserAnswers({...userAnswers, [currentQuestionIndex]: idx});
-                      }
-                    }}
-                  />
-                  <span className="ml-3 font-medium">{opt}</span>
-                </label>
+                <button 
+                  key={idx} 
+                  disabled={hasAnswered}
+                  onClick={() => handleAnswerSelect(idx)}
+                  className={`flex items-center text-left p-4 rounded-lg cursor-pointer border-2 transition-all w-full disabled:cursor-default ${borderClass}`}
+                >
+                  <div className={`w-5 h-5 rounded-full border-2 mr-3 shrink-0 flex items-center justify-center ${hasAnswered && idx === question.correctAnswerIndex ? 'border-green-500 bg-green-500' : hasAnswered && idx === userAnswer ? 'border-red-500 bg-red-500' : 'border-gray-300 dark:border-gray-600'}`}>
+                    {hasAnswered && (idx === question.correctAnswerIndex || idx === userAnswer) && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                  </div>
+                  <span className={textClass}>{opt}</span>
+                  {icon}
+                </button>
               );
             })}
           </div>
 
-          {/* Instant Explanation Reveal */}
+          {/* Instant Explanation Popup */}
           {hasAnswered && (
-             <div className="mt-8 p-5 bg-blue-50 dark:bg-gray-750 border border-blue-100 dark:border-gray-600 rounded-xl animate-fade-in">
-                <div className="flex items-center gap-2 mb-2">
-                   {userAnswers[currentQuestionIndex] === question.correctAnswerIndex ? (
-                      <span className="flex items-center gap-1 text-green-600 font-bold uppercase tracking-wider text-sm"><CheckCircle size={16}/> Correct!</span>
-                   ) : (
-                      <span className="flex items-center gap-1 text-red-500 font-bold uppercase tracking-wider text-sm"><XCircle size={16}/> Incorrect</span>
-                   )}
-                </div>
-                <h4 className="font-bold text-gray-900 dark:text-white mb-1">Explanation:</h4>
-                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{question.explanation}</p>
+             <div className="mt-6 p-5 rounded-xl bg-blue-50 dark:bg-gray-700 border border-blue-100 dark:border-gray-600 animate-fade-in">
+                <h4 className="font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                   <BookOpen size={18} className="text-blue-600 dark:text-blue-400" /> Explanation
+                </h4>
+                <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-line leading-relaxed">
+                   {question.explanation}
+                </p>
              </div>
           )}
         </div>
 
-        <div className="flex justify-between items-center mt-4">
-          <div className="flex items-center gap-4">
-            <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition font-medium">Exit</button>
-            <button onClick={submitQuiz} className="text-orange-500 hover:text-orange-600 transition font-medium flex items-center gap-1 text-sm border border-orange-200 dark:border-orange-900/50 bg-orange-50 dark:bg-orange-900/20 px-3 py-1.5 rounded-lg">
-               <AlertTriangle size={14}/> End Early & Score
-            </button>
-          </div>
-          <div className="flex gap-4">
+        <div className="flex justify-between items-center">
+          <button 
+            onClick={goHome} 
+            className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition px-4 py-2"
+          >
+            Exit to Dashboard
+          </button>
+
+          <div className="flex gap-3">
+             <button 
+                onClick={submitQuiz}
+                className="px-4 py-2.5 rounded-lg font-medium bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition flex items-center gap-2"
+              >
+                <StopCircle size={18} /> End & Grade Early
+              </button>
+
             <button 
               disabled={currentQuestionIndex === 0}
               onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
-              className="px-6 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 disabled:opacity-50 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+              className="px-6 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 disabled:opacity-50"
             >
               Previous
             </button>
@@ -406,17 +407,16 @@ export default function App() {
               <button 
                 onClick={submitQuiz}
                 disabled={!hasAnswered}
-                className="px-6 py-2.5 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition shadow-sm"
+                className="px-6 py-2.5 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition shadow-md"
               >
-                View Final Score
+                Finish & Grade
               </button>
             ) : (
               <button 
                 onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
-                disabled={!hasAnswered}
-                className="px-6 py-2.5 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50 shadow-sm flex items-center gap-2"
+                className="px-6 py-2.5 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition shadow-md"
               >
-                Next Question
+                Next
               </button>
             )}
           </div>
@@ -426,67 +426,121 @@ export default function App() {
   };
 
   const ReviewView = () => {
-    const [filterWrong, setFilterWrong] = useState(false);
-    const totalAnswered = Object.keys(userAnswers).length;
+    // 1. Calculate Score based ONLY on answered questions (for Early End compatibility)
+    let finalScore = 0;
+    let answeredCount = 0;
+    
+    sessionQuestions.forEach((q, idx) => {
+      if (userAnswers[idx] !== undefined) {
+        answeredCount++;
+        if (userAnswers[idx] === q.correctAnswerIndex) {
+          finalScore++;
+        }
+      }
+    });
+
+    const wrongCount = answeredCount - finalScore;
+    const skippedCount = sessionQuestions.length - answeredCount;
+    const percentage = answeredCount > 0 ? Math.round((finalScore / answeredCount) * 100) : 0;
 
     return (
-      <div className="max-w-4xl mx-auto p-6 animate-fade-in relative pb-24">
+      <div className="max-w-4xl mx-auto p-6 animate-fade-in relative pb-20">
         <SetupModal />
         
-        <div className="text-center mb-10">
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Session Completed</h2>
-          <p className="text-xl text-gray-600 dark:text-gray-300">
-            You scored <span className="font-bold text-blue-600 dark:text-blue-400">{score}</span> out of {totalAnswered} answered
-          </p>
-          <p className="text-sm text-gray-500 mt-1">Total questions in this bank: {sessionQuestions.length}</p>
+        {/* Statistical Summary Panel */}
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 mb-10 flex flex-col md:flex-row items-center justify-center gap-12">
+            
+            {/* Donut Chart Visual */}
+            <div className="relative w-48 h-48 rounded-full shadow-inner flex items-center justify-center" style={{
+                background: `conic-gradient(#22c55e ${percentage}%, #ef4444 0)`
+            }}>
+                <div className="absolute inset-3 bg-white dark:bg-gray-800 rounded-full flex flex-col items-center justify-center shadow-md">
+                   <span className="text-4xl font-black text-gray-900 dark:text-white">{percentage}%</span>
+                   <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mt-1">Accuracy</span>
+                </div>
+            </div>
 
-          <div className="flex justify-center gap-4 mt-6">
-             <button onClick={() => initiateSetup(activeTopic, 'quiz')} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm">
-              <RotateCcw size={18} /> Retake Quiz
-            </button>
-            <button onClick={goHome} className="px-5 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 transition hover:bg-gray-300 dark:hover:bg-gray-600">
-              Back to Topics
-            </button>
-          </div>
+            {/* Stats Details */}
+            <div className="flex flex-col gap-5 w-full md:w-auto">
+                <div>
+                   <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">Session Complete</h2>
+                   <p className="text-gray-600 dark:text-gray-400 font-medium">
+                       Answered: <span className="text-gray-900 dark:text-white font-bold">{answeredCount}</span> of {sessionQuestions.length}
+                   </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-green-50 dark:bg-green-900/30 px-5 py-4 rounded-xl border border-green-200 dark:border-green-800 text-center">
+                        <p className="text-xs text-green-600 dark:text-green-400 font-bold uppercase tracking-wider mb-1">Correct</p>
+                        <p className="text-3xl font-black text-green-700 dark:text-green-300">{finalScore}</p>
+                    </div>
+                    <div className="bg-red-50 dark:bg-red-900/30 px-5 py-4 rounded-xl border border-red-200 dark:border-red-800 text-center">
+                        <p className="text-xs text-red-600 dark:text-red-400 font-bold uppercase tracking-wider mb-1">Wrong</p>
+                        <p className="text-3xl font-black text-red-700 dark:text-red-300">{wrongCount}</p>
+                    </div>
+                </div>
+
+                {skippedCount > 0 && (
+                    <div className="bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 text-center font-medium">
+                        You skipped / ended early on {skippedCount} questions.
+                    </div>
+                )}
+            </div>
         </div>
 
-        <div className="flex justify-between items-center mb-6">
-           <h3 className="font-bold text-gray-900 dark:text-white text-xl">Review Answers</h3>
-           <button 
-              onClick={() => setFilterWrong(!filterWrong)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${filterWrong ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}
-           >
-              <Filter size={16} /> {filterWrong ? 'Show All Answered' : 'Review Wrong Answers Only'}
-           </button>
+        {/* Action Bar & Filter */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+           
+           <div className="flex items-center gap-4">
+              <span className="font-bold text-gray-800 dark:text-gray-200">Review Mode:</span>
+              <button 
+                 onClick={() => setShowOnlyWrong(!showOnlyWrong)}
+                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showOnlyWrong ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-300' : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300'}`}
+              >
+                 <XCircle size={18} /> {showOnlyWrong ? 'Showing Wrong Only' : 'Show Only Wrong'}
+              </button>
+           </div>
+
+           <div className="flex gap-3">
+              <button onClick={() => initiateSetup(activeTopic, 'quiz')} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm">
+                <RotateCcw size={18} /> Retake
+              </button>
+              <button onClick={goHome} className="px-5 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition">
+                Home
+              </button>
+           </div>
         </div>
 
-        <div className="space-y-8">
+        {/* Questions Review List */}
+        <div className="space-y-6">
           {sessionQuestions.map((q, idx) => {
             const userAnswer = userAnswers[idx];
-            const isUnanswered = userAnswer === undefined;
-            const isCorrect = userAnswer === q.correctAnswerIndex;
+            // Skip rendering if unanswered (for Early End)
+            if (userAnswer === undefined) return null;
 
-            // Filter out unanswered questions (for early exit summary bounds)
-            if (isUnanswered) return null;
-            // Filter wrong answers
-            if (filterWrong && isCorrect) return null;
+            const isCorrect = userAnswer === q.correctAnswerIndex;
+            
+            // Apply "Show Only Wrong" Filter
+            if (showOnlyWrong && isCorrect) return null;
 
             return (
               <div key={q.id || idx} className={`p-6 rounded-xl border-l-4 shadow-sm bg-white dark:bg-gray-800 ${isCorrect ? 'border-green-500' : 'border-red-500'}`}>
                 <div className="flex items-start gap-3">
                   {isCorrect ? <CheckCircle className="text-green-500 mt-1 shrink-0" /> : <XCircle className="text-red-500 mt-1 shrink-0" />}
-                  <div>
+                  <div className="w-full">
                     <span className="text-sm text-gray-500 dark:text-gray-400 font-semibold mb-1 block">Question {idx + 1}</span>
                     <p className="text-gray-900 dark:text-white whitespace-pre-line font-medium mb-4">{q.question}</p>
                     
-                    <div className="space-y-2 mb-4">
+                    <div className="space-y-2 mb-5">
                       {q.options.map((opt, optIdx) => {
-                        let rowClass = "p-3 rounded-lg border dark:border-gray-700 text-sm text-gray-800 dark:text-gray-300";
+                        let rowClass = "p-3 rounded-lg border dark:border-gray-700 text-sm text-gray-800 dark:text-gray-300 bg-gray-50 dark:bg-gray-750 opacity-60";
+                        
                         if (optIdx === q.correctAnswerIndex) {
-                          rowClass = "p-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-900 dark:text-green-100 font-medium";
+                          rowClass = "p-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-300 dark:border-green-700 text-green-900 dark:text-green-100 font-bold shadow-sm";
                         } else if (optIdx === userAnswer && !isCorrect) {
-                           rowClass = "p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-900 dark:text-red-100";
+                           rowClass = "p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 text-red-900 dark:text-red-100 font-medium shadow-sm line-through";
                         }
+                        
                         return (
                           <div key={optIdx} className={rowClass}>
                             {opt}
@@ -495,9 +549,11 @@ export default function App() {
                       })}
                     </div>
 
-                    <div className="mt-4 p-4 rounded-lg bg-blue-50 dark:bg-gray-700/50 border border-blue-100 dark:border-gray-600">
-                      <h4 className="font-bold text-gray-900 dark:text-white mb-1">Explanation:</h4>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{q.explanation}</p>
+                    <div className="p-5 rounded-lg bg-blue-50 dark:bg-gray-700 border border-blue-100 dark:border-gray-600">
+                      <h4 className="font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                         <BookOpen size={16} className="text-blue-600 dark:text-blue-400" /> Explanation
+                      </h4>
+                      <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-line leading-relaxed">{q.explanation}</p>
                     </div>
                   </div>
                 </div>
@@ -593,7 +649,7 @@ export default function App() {
     return (
       <div className="max-w-5xl mx-auto p-6 animate-fade-in pb-24">
          <div className="flex justify-between items-center mb-6">
-          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition font-medium">← Back</button>
+          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition">← Back</button>
           <div className="flex gap-4">
              <button onClick={() => saveChanges(localTopic)} disabled={isSaving} className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50 shadow-sm">
               <Cloud size={18} /> {isSaving ? 'Saving...' : 'Save to Cloud'}
@@ -689,7 +745,7 @@ export default function App() {
 
         <button 
           onClick={addNewQuestion}
-          className="mt-8 w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition font-medium"
+          className="mt-8 w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition"
         >
           <Plus size={20} /> Add New Question
         </button>
@@ -713,7 +769,7 @@ export default function App() {
     return (
       <div className="max-w-2xl mx-auto p-6 animate-fade-in flex flex-col items-center justify-center min-h-[80vh]">
          <div className="w-full flex justify-between items-center mb-8">
-          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition font-medium">← Back</button>
+          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition">← Back</button>
           <span className="text-gray-600 dark:text-gray-400 font-medium">Card {currentQuestionIndex + 1} of {sessionQuestions.length}</span>
          </div>
 
@@ -736,7 +792,7 @@ export default function App() {
                    </p>
                    <div className="h-px w-full bg-blue-200 dark:bg-gray-600 mb-6 shrink-0"></div>
                    <span className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Explanation</span>
-                   <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{question.explanation}</p>
+                   <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{question.explanation}</p>
                </div>
             </div>
          </div>
@@ -745,7 +801,7 @@ export default function App() {
             <button 
               disabled={currentQuestionIndex === 0}
               onClick={handlePrev}
-              className="px-6 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 disabled:opacity-50 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+              className="px-6 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 disabled:opacity-50"
             >
               Previous
             </button>
