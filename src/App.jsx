@@ -287,17 +287,46 @@ export default function App() {
   const Quizzer = () => {
     const question = sessionQuestions[currentQuestionIndex];
     const isLast = currentQuestionIndex === sessionQuestions.length - 1;
+    const hasAnswered = userAnswers[currentQuestionIndex] !== undefined;
+
+    // Calculate Live Tally
+    let correctCount = 0;
+    let wrongCount = 0;
+    Object.keys(userAnswers).forEach((key) => {
+      const idx = parseInt(key);
+      if (userAnswers[idx] === sessionQuestions[idx].correctAnswerIndex) {
+        correctCount++;
+      } else {
+        wrongCount++;
+      }
+    });
 
     return (
       <div className="max-w-3xl mx-auto p-6 animate-fade-in">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">{activeTopic.title}</h2>
-          <span className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-sm font-semibold px-4 py-1 rounded-full">
-            Question {currentQuestionIndex + 1} of {sessionQuestions.length}
-          </span>
+          <div>
+             <h2 className="text-xl font-bold text-gray-900 dark:text-white">{activeTopic.title}</h2>
+             <span className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs font-bold px-3 py-1 rounded-full mt-2 inline-block uppercase tracking-wider">
+               Question {currentQuestionIndex + 1} of {sessionQuestions.length}
+             </span>
+          </div>
+          
+          {/* Live Score Tally */}
+          <div className="flex gap-4 p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+             <div className="flex flex-col items-center">
+                <span className="text-xs text-gray-500 font-bold uppercase tracking-widest">Correct</span>
+                <span className="text-xl font-black text-green-500">{correctCount}</span>
+             </div>
+             <div className="w-px bg-gray-200 dark:bg-gray-700"></div>
+             <div className="flex flex-col items-center">
+                <span className="text-xs text-gray-500 font-bold uppercase tracking-widest">Wrong</span>
+                <span className="text-xl font-black text-red-500">{wrongCount}</span>
+             </div>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-100 dark:border-gray-700 mb-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-100 dark:border-gray-700 mb-6 relative overflow-hidden">
+          {/* Question Text */}
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider font-semibold">
             {question.type === 'theory' ? 'Theoretical Problem' : 'Situational/Computational'}
           </p>
@@ -305,53 +334,84 @@ export default function App() {
             {question.question}
           </p>
 
+          {/* Options */}
           <div className="grid gap-3">
-            {question.options.map((opt, idx) => (
-              <label 
-                key={idx} 
-                className={`flex items-start p-4 rounded-lg cursor-pointer border-2 transition-all ${
-                  userAnswers[currentQuestionIndex] === idx 
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30' 
-                    : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750'
-                }`}
-              >
-                <input 
-                  type="radio" 
-                  name="quiz-option" 
-                  className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600"
-                  checked={userAnswers[currentQuestionIndex] === idx}
-                  onChange={() => setUserAnswers({...userAnswers, [currentQuestionIndex]: idx})}
-                />
-                <span className="ml-3 text-gray-800 dark:text-gray-200">{opt}</span>
-              </label>
-            ))}
+            {question.options.map((opt, idx) => {
+              // Styling logic for instant feedback
+              let optionClass = "flex items-start p-4 rounded-lg border-2 transition-all ";
+              if (hasAnswered) {
+                if (idx === question.correctAnswerIndex) {
+                   optionClass += "border-green-500 bg-green-50 dark:bg-green-900/30 text-green-900 dark:text-green-100";
+                } else if (idx === userAnswers[currentQuestionIndex]) {
+                   optionClass += "border-red-500 bg-red-50 dark:bg-red-900/30 text-red-900 dark:text-red-100";
+                } else {
+                   optionClass += "border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed";
+                }
+              } else {
+                optionClass += "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer";
+              }
+
+              return (
+                <label key={idx} className={optionClass}>
+                  <input 
+                    type="radio" 
+                    name={`quiz-option-${currentQuestionIndex}`}
+                    disabled={hasAnswered}
+                    className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50"
+                    checked={userAnswers[currentQuestionIndex] === idx}
+                    onChange={() => {
+                      if (!hasAnswered) {
+                        setUserAnswers({...userAnswers, [currentQuestionIndex]: idx});
+                      }
+                    }}
+                  />
+                  <span className="ml-3 font-medium">{opt}</span>
+                </label>
+              );
+            })}
           </div>
+
+          {/* Instant Explanation Reveal */}
+          {hasAnswered && (
+             <div className="mt-8 p-5 bg-blue-50 dark:bg-gray-750 border border-blue-100 dark:border-gray-600 rounded-xl animate-fade-in">
+                <div className="flex items-center gap-2 mb-2">
+                   {userAnswers[currentQuestionIndex] === question.correctAnswerIndex ? (
+                      <span className="flex items-center gap-1 text-green-600 font-bold uppercase tracking-wider text-sm"><CheckCircle size={16}/> Correct!</span>
+                   ) : (
+                      <span className="flex items-center gap-1 text-red-500 font-bold uppercase tracking-wider text-sm"><XCircle size={16}/> Incorrect</span>
+                   )}
+                </div>
+                <h4 className="font-bold text-gray-900 dark:text-white mb-1">Explanation:</h4>
+                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{question.explanation}</p>
+             </div>
+          )}
         </div>
 
         <div className="flex justify-between items-center">
-          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition">Exit</button>
+          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition font-medium">Exit</button>
           <div className="flex gap-4">
             <button 
               disabled={currentQuestionIndex === 0}
               onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
-              className="px-6 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 disabled:opacity-50"
+              className="px-6 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 disabled:opacity-50 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
             >
               Previous
             </button>
             {isLast ? (
               <button 
                 onClick={submitQuiz}
-                disabled={userAnswers[currentQuestionIndex] === undefined}
-                className="px-6 py-2.5 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition"
+                disabled={!hasAnswered}
+                className="px-6 py-2.5 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition shadow-sm"
               >
-                Submit Quiz
+                View Final Score
               </button>
             ) : (
               <button 
                 onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
-                className="px-6 py-2.5 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition"
+                disabled={!hasAnswered}
+                className="px-6 py-2.5 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50 shadow-sm flex items-center gap-2"
               >
-                Next
+                Next Question
               </button>
             )}
           </div>
@@ -366,7 +426,7 @@ export default function App() {
         <SetupModal />
         
         <div className="text-center mb-10">
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Quiz Completed</h2>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Session Completed</h2>
           <p className="text-xl text-gray-600 dark:text-gray-300">
             You scored <span className="font-bold text-blue-600 dark:text-blue-400">{score}</span> out of {sessionQuestions.length}
           </p>
@@ -374,7 +434,7 @@ export default function App() {
              <button onClick={() => initiateSetup(activeTopic, 'quiz')} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm">
               <RotateCcw size={18} /> Retake Quiz
             </button>
-            <button onClick={goHome} className="px-5 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 transition">
+            <button onClick={goHome} className="px-5 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 transition hover:bg-gray-300 dark:hover:bg-gray-600">
               Back to Topics
             </button>
           </div>
@@ -513,7 +573,7 @@ export default function App() {
     return (
       <div className="max-w-5xl mx-auto p-6 animate-fade-in pb-24">
          <div className="flex justify-between items-center mb-6">
-          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition">← Back</button>
+          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition font-medium">← Back</button>
           <div className="flex gap-4">
              <button onClick={() => saveChanges(localTopic)} disabled={isSaving} className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50 shadow-sm">
               <Cloud size={18} /> {isSaving ? 'Saving...' : 'Save to Cloud'}
@@ -609,7 +669,7 @@ export default function App() {
 
         <button 
           onClick={addNewQuestion}
-          className="mt-8 w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+          className="mt-8 w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition font-medium"
         >
           <Plus size={20} /> Add New Question
         </button>
@@ -633,7 +693,7 @@ export default function App() {
     return (
       <div className="max-w-2xl mx-auto p-6 animate-fade-in flex flex-col items-center justify-center min-h-[80vh]">
          <div className="w-full flex justify-between items-center mb-8">
-          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition">← Back</button>
+          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition font-medium">← Back</button>
           <span className="text-gray-600 dark:text-gray-400 font-medium">Card {currentQuestionIndex + 1} of {sessionQuestions.length}</span>
          </div>
 
@@ -665,7 +725,7 @@ export default function App() {
             <button 
               disabled={currentQuestionIndex === 0}
               onClick={handlePrev}
-              className="px-6 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 disabled:opacity-50"
+              className="px-6 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 disabled:opacity-50 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
             >
               Previous
             </button>
