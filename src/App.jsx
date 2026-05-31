@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud, AlertTriangle } from 'lucide-react';
+import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud, AlertTriangle, Shuffle } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
@@ -21,6 +21,16 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'special-laws-quizzer';
 
+// Utility function to shuffle arrays
+const shuffleArray = (array) => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
 export default function App() {
   const [darkMode, setDarkMode] = useState(true);
   const [topics, setTopics] = useState([]);
@@ -28,6 +38,11 @@ export default function App() {
   const [activeTopic, setActiveTopic] = useState(null);
   const [appError, setAppError] = useState('');
   
+  // Session State (for randomized taking)
+  const [sessionQuestions, setSessionQuestions] = useState([]);
+  const [setupModal, setSetupModal] = useState({ isOpen: false, topic: null, type: null }); // type: 'quiz' | 'flashcards'
+  const [isRandomized, setIsRandomized] = useState(false);
+
   // Cloud Auth State
   const [user, setUser] = useState(null);
   const [isSyncing, setIsSyncing] = useState(true);
@@ -59,7 +74,7 @@ export default function App() {
     if (!user) return; // Guard: Wait for auth
 
     setIsSyncing(true);
-    setAppError(''); // Clear previous errors
+    setAppError(''); 
     
     const topicsRef = collection(db, 'artifacts', appId, 'public', 'data', 'quiz_topics');
     
@@ -90,7 +105,7 @@ export default function App() {
 
   const toggleTheme = () => setDarkMode(!darkMode);
 
-  // --- NAVIGATION HANDLERS ---
+  // --- NAVIGATION & SETUP HANDLERS ---
   const createNewTopic = () => {
     const newTopic = {
       id: `topic-${Date.now()}`,
@@ -101,12 +116,24 @@ export default function App() {
     setCurrentView('edit');
   };
 
-  const startPractice = (topic) => {
-    setActiveTopic(topic);
+  const initiateSetup = (topic, type) => {
+    setSetupModal({ isOpen: true, topic, type });
+    setIsRandomized(false); // Default to ordered
+  };
+
+  const confirmStart = () => {
+    let questionsToUse = [...setupModal.topic.questions];
+    if (isRandomized) {
+      questionsToUse = shuffleArray(questionsToUse);
+    }
+    
+    setSessionQuestions(questionsToUse);
+    setActiveTopic(setupModal.topic);
     setCurrentQuestionIndex(0);
     setUserAnswers({});
     setScore(0);
-    setCurrentView('quiz');
+    setCurrentView(setupModal.type);
+    setSetupModal({ isOpen: false, topic: null, type: null });
   };
 
   const openEdit = (topic) => {
@@ -114,20 +141,15 @@ export default function App() {
     setCurrentView('edit');
   };
 
-  const openFlashcards = (topic) => {
-    setActiveTopic(topic);
-    setCurrentQuestionIndex(0);
-    setCurrentView('flashcards');
-  };
-
   const goHome = () => {
     setCurrentView('dashboard');
     setActiveTopic(null);
+    setSessionQuestions([]);
   };
 
   const submitQuiz = () => {
     let currentScore = 0;
-    activeTopic.questions.forEach((q, idx) => {
+    sessionQuestions.forEach((q, idx) => {
       if (userAnswers[idx] === q.correctAnswerIndex) {
         currentScore++;
       }
@@ -138,8 +160,59 @@ export default function App() {
 
   // --- COMPONENTS ---
 
+  const SetupModal = () => {
+    if (!setupModal.isOpen) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-700">
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            Configure Session
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-6 font-medium">{setupModal.topic.title}</p>
+          
+          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-xl mb-8 border border-gray-200 dark:border-gray-700">
+             <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg">
+                  <Shuffle size={20} />
+                </div>
+                <div>
+                  <p className="font-bold text-gray-900 dark:text-white">Randomize Order</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Shuffle questions for this session</p>
+                </div>
+             </div>
+             
+             {/* Toggle Switch */}
+             <button 
+                onClick={() => setIsRandomized(!isRandomized)}
+                className={`w-12 h-6 rounded-full transition-colors relative focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 ${isRandomized ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+             >
+                <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform duration-200 ease-in-out ${isRandomized ? 'translate-x-7' : 'translate-x-1'}`} />
+             </button>
+          </div>
+
+          <div className="flex justify-end gap-3">
+             <button 
+               onClick={() => setSetupModal({isOpen: false, topic: null, type: null})} 
+               className="px-5 py-2.5 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl font-medium transition"
+             >
+               Cancel
+             </button>
+             <button 
+               onClick={confirmStart} 
+               className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition flex items-center gap-2"
+             >
+               Start {setupModal.type === 'quiz' ? 'Quiz' : 'Flashcards'}
+             </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const Dashboard = () => (
-    <div className="max-w-4xl mx-auto p-6 animate-fade-in">
+    <div className="max-w-4xl mx-auto p-6 animate-fade-in relative">
+      <SetupModal />
       
       {appError && (
         <div className="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 mb-6 rounded shadow-sm flex items-start justify-between">
@@ -184,13 +257,13 @@ export default function App() {
            </div>
         )}
         {topics.map(topic => (
-          <div key={topic.id} className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-100 dark:border-gray-700">
+          <div key={topic.id} className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-100 dark:border-gray-700 transition-all hover:border-blue-200 dark:hover:border-blue-800">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">{topic.title}</h2>
             <div className="flex flex-wrap gap-4">
-              <button onClick={() => startPractice(topic)} disabled={topic.questions.length === 0} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={() => initiateSetup(topic, 'quiz')} disabled={topic.questions.length === 0} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed">
                 <Play size={18} /> Practice Mode ({topic.questions?.length || 0})
               </button>
-              <button onClick={() => openFlashcards(topic)} disabled={topic.questions.length === 0} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={() => initiateSetup(topic, 'flashcards')} disabled={topic.questions.length === 0} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed">
                 <BookOpen size={18} /> Flashcards
               </button>
               <button onClick={() => openEdit(topic)} className="flex items-center gap-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 px-5 py-2.5 rounded-lg font-medium transition">
@@ -212,15 +285,15 @@ export default function App() {
   );
 
   const Quizzer = () => {
-    const question = activeTopic.questions[currentQuestionIndex];
-    const isLast = currentQuestionIndex === activeTopic.questions.length - 1;
+    const question = sessionQuestions[currentQuestionIndex];
+    const isLast = currentQuestionIndex === sessionQuestions.length - 1;
 
     return (
       <div className="max-w-3xl mx-auto p-6 animate-fade-in">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">{activeTopic.title}</h2>
           <span className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-sm font-semibold px-4 py-1 rounded-full">
-            Question {currentQuestionIndex + 1} of {activeTopic.questions.length}
+            Question {currentQuestionIndex + 1} of {sessionQuestions.length}
           </span>
         </div>
 
@@ -289,14 +362,16 @@ export default function App() {
 
   const ReviewView = () => {
     return (
-      <div className="max-w-4xl mx-auto p-6 animate-fade-in">
+      <div className="max-w-4xl mx-auto p-6 animate-fade-in relative">
+        <SetupModal />
+        
         <div className="text-center mb-10">
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Quiz Completed</h2>
           <p className="text-xl text-gray-600 dark:text-gray-300">
-            You scored <span className="font-bold text-blue-600 dark:text-blue-400">{score}</span> out of {activeTopic.questions.length}
+            You scored <span className="font-bold text-blue-600 dark:text-blue-400">{score}</span> out of {sessionQuestions.length}
           </p>
           <div className="flex justify-center gap-4 mt-6">
-             <button onClick={() => startPractice(activeTopic)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition">
+             <button onClick={() => initiateSetup(activeTopic, 'quiz')} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm">
               <RotateCcw size={18} /> Retake Quiz
             </button>
             <button onClick={goHome} className="px-5 py-2.5 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 transition">
@@ -306,7 +381,7 @@ export default function App() {
         </div>
 
         <div className="space-y-8">
-          {activeTopic.questions.map((q, idx) => {
+          {sessionQuestions.map((q, idx) => {
             const userAnswer = userAnswers[idx];
             const isCorrect = userAnswer === q.correctAnswerIndex;
             const isUnanswered = userAnswer === undefined;
@@ -544,7 +619,7 @@ export default function App() {
 
   const FlashcardsView = () => {
     const [isFlipped, setIsFlipped] = useState(false);
-    const question = activeTopic.questions[currentQuestionIndex];
+    const question = sessionQuestions[currentQuestionIndex];
 
     const handleNext = () => {
       setIsFlipped(false);
@@ -559,7 +634,7 @@ export default function App() {
       <div className="max-w-2xl mx-auto p-6 animate-fade-in flex flex-col items-center justify-center min-h-[80vh]">
          <div className="w-full flex justify-between items-center mb-8">
           <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition">← Back</button>
-          <span className="text-gray-600 dark:text-gray-400 font-medium">Card {currentQuestionIndex + 1} of {activeTopic.questions.length}</span>
+          <span className="text-gray-600 dark:text-gray-400 font-medium">Card {currentQuestionIndex + 1} of {sessionQuestions.length}</span>
          </div>
 
          <div 
@@ -574,12 +649,12 @@ export default function App() {
                   <p className="text-sm text-gray-400 mt-8">(Click to flip)</p>
                </div>
                {/* Back */}
-               <div className="absolute w-full h-full backface-hidden rotate-y-180 flex flex-col items-center justify-center p-8 bg-blue-50 dark:bg-gray-800 rounded-2xl shadow-xl border border-blue-100 dark:border-gray-600 text-center">
+               <div className="absolute w-full h-full backface-hidden rotate-y-180 flex flex-col items-center justify-center p-8 bg-blue-50 dark:bg-gray-800 rounded-2xl shadow-xl border border-blue-100 dark:border-gray-600 text-center overflow-y-auto">
                    <span className="text-xs font-bold uppercase tracking-widest text-green-600 dark:text-green-400 mb-4">Answer</span>
                    <p className="text-xl text-gray-900 dark:text-white font-bold mb-6">
                      {question.options[question.correctAnswerIndex]}
                    </p>
-                   <div className="h-px w-full bg-blue-200 dark:bg-gray-600 mb-6"></div>
+                   <div className="h-px w-full bg-blue-200 dark:bg-gray-600 mb-6 shrink-0"></div>
                    <span className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Explanation</span>
                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{question.explanation}</p>
                </div>
@@ -595,7 +670,7 @@ export default function App() {
               Previous
             </button>
             <button 
-              disabled={currentQuestionIndex === activeTopic.questions.length - 1}
+              disabled={currentQuestionIndex === sessionQuestions.length - 1}
               onClick={handleNext}
               className="px-6 py-2.5 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition"
             >
