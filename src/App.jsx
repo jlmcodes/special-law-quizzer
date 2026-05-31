@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud, AlertTriangle, Shuffle } from 'lucide-react';
+import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud, AlertTriangle, Shuffle, Filter } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
@@ -387,8 +387,13 @@ export default function App() {
           )}
         </div>
 
-        <div className="flex justify-between items-center">
-          <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition font-medium">Exit</button>
+        <div className="flex justify-between items-center mt-4">
+          <div className="flex items-center gap-4">
+            <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition font-medium">Exit</button>
+            <button onClick={submitQuiz} className="text-orange-500 hover:text-orange-600 transition font-medium flex items-center gap-1 text-sm border border-orange-200 dark:border-orange-900/50 bg-orange-50 dark:bg-orange-900/20 px-3 py-1.5 rounded-lg">
+               <AlertTriangle size={14}/> End Early & Score
+            </button>
+          </div>
           <div className="flex gap-4">
             <button 
               disabled={currentQuestionIndex === 0}
@@ -421,15 +426,20 @@ export default function App() {
   };
 
   const ReviewView = () => {
+    const [filterWrong, setFilterWrong] = useState(false);
+    const totalAnswered = Object.keys(userAnswers).length;
+
     return (
-      <div className="max-w-4xl mx-auto p-6 animate-fade-in relative">
+      <div className="max-w-4xl mx-auto p-6 animate-fade-in relative pb-24">
         <SetupModal />
         
         <div className="text-center mb-10">
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Session Completed</h2>
           <p className="text-xl text-gray-600 dark:text-gray-300">
-            You scored <span className="font-bold text-blue-600 dark:text-blue-400">{score}</span> out of {sessionQuestions.length}
+            You scored <span className="font-bold text-blue-600 dark:text-blue-400">{score}</span> out of {totalAnswered} answered
           </p>
+          <p className="text-sm text-gray-500 mt-1">Total questions in this bank: {sessionQuestions.length}</p>
+
           <div className="flex justify-center gap-4 mt-6">
              <button onClick={() => initiateSetup(activeTopic, 'quiz')} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm">
               <RotateCcw size={18} /> Retake Quiz
@@ -440,11 +450,26 @@ export default function App() {
           </div>
         </div>
 
+        <div className="flex justify-between items-center mb-6">
+           <h3 className="font-bold text-gray-900 dark:text-white text-xl">Review Answers</h3>
+           <button 
+              onClick={() => setFilterWrong(!filterWrong)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${filterWrong ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}
+           >
+              <Filter size={16} /> {filterWrong ? 'Show All Answered' : 'Review Wrong Answers Only'}
+           </button>
+        </div>
+
         <div className="space-y-8">
           {sessionQuestions.map((q, idx) => {
             const userAnswer = userAnswers[idx];
-            const isCorrect = userAnswer === q.correctAnswerIndex;
             const isUnanswered = userAnswer === undefined;
+            const isCorrect = userAnswer === q.correctAnswerIndex;
+
+            // Filter out unanswered questions (for early exit summary bounds)
+            if (isUnanswered) return null;
+            // Filter wrong answers
+            if (filterWrong && isCorrect) return null;
 
             return (
               <div key={q.id || idx} className={`p-6 rounded-xl border-l-4 shadow-sm bg-white dark:bg-gray-800 ${isCorrect ? 'border-green-500' : 'border-red-500'}`}>
@@ -468,11 +493,6 @@ export default function App() {
                           </div>
                         )
                       })}
-                      {isUnanswered && (
-                         <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-900 dark:text-yellow-100 text-sm">
-                            You did not answer this question.
-                          </div>
-                      )}
                     </div>
 
                     <div className="mt-4 p-4 rounded-lg bg-blue-50 dark:bg-gray-700/50 border border-blue-100 dark:border-gray-600">
