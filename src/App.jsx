@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud } from 'lucide-react';
+import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud, AlertTriangle } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
@@ -26,6 +26,7 @@ export default function App() {
   const [topics, setTopics] = useState([]);
   const [currentView, setCurrentView] = useState('dashboard');
   const [activeTopic, setActiveTopic] = useState(null);
+  const [appError, setAppError] = useState('');
   
   // Cloud Auth State
   const [user, setUser] = useState(null);
@@ -36,13 +37,15 @@ export default function App() {
   const [userAnswers, setUserAnswers] = useState({});
   const [score, setScore] = useState(0);
 
-  // 1. Initialize Authentication (Required before any DB operations)
+  // 1. Initialize Authentication
   useEffect(() => {
     const initAuth = async () => {
       try {
         await signInAnonymously(auth);
       } catch (error) {
         console.error("Auth error:", error);
+        setAppError("Firebase Authentication failed. Please make sure 'Anonymous' sign-in is enabled in your Firebase Console.");
+        setIsSyncing(false);
       }
     };
     
@@ -56,7 +59,8 @@ export default function App() {
     if (!user) return; // Guard: Wait for auth
 
     setIsSyncing(true);
-    // Strict path for public shared data
+    setAppError(''); // Clear previous errors
+    
     const topicsRef = collection(db, 'artifacts', appId, 'public', 'data', 'quiz_topics');
     
     const unsubscribe = onSnapshot(topicsRef, (snapshot) => {
@@ -68,6 +72,7 @@ export default function App() {
       setIsSyncing(false);
     }, (error) => {
       console.error("Error fetching cloud topics:", error);
+      setAppError("Failed to fetch quizzes from the cloud. Please check your Firestore Security Rules (they might be blocking access).");
       setIsSyncing(false);
     });
 
@@ -135,14 +140,27 @@ export default function App() {
 
   const Dashboard = () => (
     <div className="max-w-4xl mx-auto p-6 animate-fade-in">
+      
+      {appError && (
+        <div className="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 mb-6 rounded shadow-sm flex items-start justify-between">
+          <div className="flex gap-3">
+             <AlertTriangle className="shrink-0" />
+             <p className="text-sm font-medium">{appError}</p>
+          </div>
+          <button onClick={() => setAppError('')} className="text-red-500 hover:text-red-700 font-bold">✕</button>
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-10">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
             Special Laws Quizzer
             {isSyncing ? (
                <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full flex items-center gap-1 animate-pulse"><Cloud size={12}/> Syncing...</span>
-            ) : (
+            ) : user && !appError ? (
                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full flex items-center gap-1"><Cloud size={12}/> Online</span>
+            ) : (
+               <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full flex items-center gap-1">Offline</span>
             )}
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">Accountancy Review Application</p>
@@ -154,7 +172,7 @@ export default function App() {
 
       <div className="flex justify-between items-center mb-4">
          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Your Quiz Banks</h2>
-         <button onClick={createNewTopic} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition">
+         <button onClick={createNewTopic} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm">
            <Plus size={18} /> New Topic
          </button>
       </div>
@@ -294,7 +312,7 @@ export default function App() {
             const isUnanswered = userAnswer === undefined;
 
             return (
-              <div key={q.id} className={`p-6 rounded-xl border-l-4 shadow-sm bg-white dark:bg-gray-800 ${isCorrect ? 'border-green-500' : 'border-red-500'}`}>
+              <div key={q.id || idx} className={`p-6 rounded-xl border-l-4 shadow-sm bg-white dark:bg-gray-800 ${isCorrect ? 'border-green-500' : 'border-red-500'}`}>
                 <div className="flex items-start gap-3">
                   {isCorrect ? <CheckCircle className="text-green-500 mt-1 shrink-0" /> : <XCircle className="text-red-500 mt-1 shrink-0" />}
                   <div>
@@ -376,34 +394,39 @@ export default function App() {
       setLocalTopic({...localTopic, questions: updatedQuestions});
     };
 
-    // 3. Save to Cloud Firestore
-    const saveChanges = async () => {
+    // Save to Cloud Firestore
+    const saveChanges = async (topicData = localTopic) => {
       if (!user) {
         alert("Authentication required to save to cloud.");
         return;
       }
       setIsSaving(true);
       try {
-        const topicRef = doc(db, 'artifacts', appId, 'public', 'data', 'quiz_topics', localTopic.id);
-        await setDoc(topicRef, localTopic);
-        setActiveTopic(localTopic); 
+        const topicRef = doc(db, 'artifacts', appId, 'public', 'data', 'quiz_topics', topicData.id);
+        await setDoc(topicRef, topicData);
+        setActiveTopic(topicData); 
         alert("Changes Saved to Cloud Successfully!");
         goHome();
       } catch (error) {
         console.error("Error saving document: ", error);
-        alert("Failed to save to cloud. Check console for details.");
+        alert("Failed to save to cloud! Check your Firestore Security Rules.");
       } finally {
         setIsSaving(false);
       }
     };
 
-    const handleImportJson = () => {
+    // Auto-Save Import Logic
+    const handleImportJson = async () => {
       try {
         const parsedData = JSON.parse(jsonInput);
         if (Array.isArray(parsedData) && parsedData.length > 0 && parsedData[0].question) {
-          setLocalTopic({...localTopic, questions: [...localTopic.questions, ...parsedData]});
-          alert("Imported successfully! Remember to click 'Save to Cloud' to apply and share.");
+          const updatedTopic = {...localTopic, questions: [...localTopic.questions, ...parsedData]};
+          setLocalTopic(updatedTopic);
           setJsonInput('');
+          
+          // Auto-trigger cloud save upon import
+          await saveChanges(updatedTopic);
+          
         } else {
            alert("Invalid JSON format. Expected an array of question objects.");
         }
@@ -417,7 +440,7 @@ export default function App() {
          <div className="flex justify-between items-center mb-6">
           <button onClick={goHome} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition">← Back</button>
           <div className="flex gap-4">
-             <button onClick={saveChanges} disabled={isSaving} className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50">
+             <button onClick={() => saveChanges(localTopic)} disabled={isSaving} className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50 shadow-sm">
               <Cloud size={18} /> {isSaving ? 'Saving...' : 'Save to Cloud'}
             </button>
           </div>
@@ -429,23 +452,25 @@ export default function App() {
               type="text"
               value={localTopic.title}
               onChange={handleTitleChange}
-              className="w-full text-2xl font-bold p-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+              className="w-full text-2xl font-bold p-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 shadow-sm"
            />
         </div>
 
         {/* JSON Import Tool */}
-        <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 mb-8">
-            <h3 className="font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-              <Upload size={18} /> Batch Import Questions (JSON)
+        <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-xl border border-blue-200 dark:border-blue-900/50 mb-8 shadow-sm">
+            <h3 className="font-bold text-blue-900 dark:text-blue-300 mb-2 flex items-center gap-2">
+              <Upload size={18} /> Batch Import & Auto-Save
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Paste the JSON array generated by the AI here to instantly load all 70 questions.</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">Paste your AI-generated JSON array here. Clicking load will instantly import and sync it to the cloud.</p>
             <textarea 
               value={jsonInput}
               onChange={(e) => setJsonInput(e.target.value)}
               placeholder='[ { "question": "...", "options": [...], ... } ]'
               className="w-full h-32 p-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm font-mono focus:ring-2 focus:ring-blue-500 mb-4"
             />
-            <button onClick={handleImportJson} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">Load JSON Data</button>
+            <button onClick={handleImportJson} disabled={isSaving} className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 transition shadow-sm">
+              {isSaving ? 'Syncing to Cloud...' : 'Load JSON & Sync'}
+            </button>
         </div>
 
         <div className="space-y-8">
