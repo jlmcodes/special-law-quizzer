@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud, AlertTriangle, Shuffle, StopCircle } from 'lucide-react';
+import { Moon, Sun, Play, Edit3, RotateCcw, CheckCircle, XCircle, BookOpen, Save, Plus, Trash2, Upload, Cloud, AlertTriangle, Shuffle, StopCircle, ArrowRight } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
@@ -426,7 +426,7 @@ export default function App() {
   };
 
   const ReviewView = () => {
-    // 1. Calculate Score based ONLY on answered questions (for Early End compatibility)
+    // 1. Calculate Score based ONLY on answered questions
     let finalScore = 0;
     let answeredCount = 0;
     
@@ -442,6 +442,16 @@ export default function App() {
     const wrongCount = answeredCount - finalScore;
     const skippedCount = sessionQuestions.length - answeredCount;
     const percentage = answeredCount > 0 ? Math.round((finalScore / answeredCount) * 100) : 0;
+
+    // Action to continue where the user left off
+    const continueUnanswered = () => {
+      // Find the first index that hasn't been answered yet
+      const firstUnanswered = sessionQuestions.findIndex((_, idx) => userAnswers[idx] === undefined);
+      if (firstUnanswered !== -1) {
+          setCurrentQuestionIndex(firstUnanswered);
+          setCurrentView('quiz');
+      }
+    };
 
     return (
       <div className="max-w-4xl mx-auto p-6 animate-fade-in relative pb-20">
@@ -481,8 +491,8 @@ export default function App() {
                 </div>
 
                 {skippedCount > 0 && (
-                    <div className="bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 text-center font-medium">
-                        You skipped / ended early on {skippedCount} questions.
+                    <div className="bg-yellow-50 dark:bg-yellow-900/30 px-4 py-2 rounded-lg text-sm text-yellow-800 dark:text-yellow-200 text-center font-medium border border-yellow-200 dark:border-yellow-800">
+                        You have {skippedCount} unanswered questions remaining.
                     </div>
                 )}
             </div>
@@ -501,7 +511,12 @@ export default function App() {
               </button>
            </div>
 
-           <div className="flex gap-3">
+           <div className="flex gap-3 flex-wrap justify-end">
+              {skippedCount > 0 && (
+                 <button onClick={continueUnanswered} className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm">
+                   <ArrowRight size={18} /> Continue Unanswered
+                 </button>
+              )}
               <button onClick={() => initiateSetup(activeTopic, 'quiz')} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition shadow-sm">
                 <RotateCcw size={18} /> Retake
               </button>
